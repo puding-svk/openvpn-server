@@ -60,7 +60,7 @@ if [ ! -c /dev/net/tun ]; then
 fi
 
 echo 'Configuring networking rules...'
-if ! grep -q 'net.ipv4.ip_forward=1' /etc/sysctl.conf; then
+if ! grep -q -E "^\s*#?\s*net.ipv4.ip_forward=1" /etc/sysctl.conf; then
   echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf; 
   echo 'IP forwarding configuration now applied:'
 else
@@ -70,15 +70,31 @@ sysctl -p /etc/sysctl.conf
 
 echo 'Configuring iptables...'
 echo 'NAT for OpenVPN clients'
-iptables -t nat -A POSTROUTING -s $TRUST_SUB -o eth0 -j MASQUERADE
-iptables -t nat -A POSTROUTING -s $GUEST_SUB -o eth0 -j MASQUERADE
+echo "iptables -t nat -A POSTROUTING -s $TRUST_SUB -o eth0 -j MASQUERADE"
+iptables -t nat -C POSTROUTING -s $TRUST_SUB -o eth0 -j MASQUERADE 2>/dev/null|| {
+    iptables -t nat -A POSTROUTING -s $TRUST_SUB -o eth0 -j MASQUERADE
+}
+echo "iptables -t nat -A POSTROUTING -s $GUEST_SUB -o eth0 -j MASQUERADE"
+iptables -t nat -C POSTROUTING -s $GUEST_SUB -o eth0 -j MASQUERADE 2>/dev/null|| {
+    iptables -t nat -A POSTROUTING -s $GUEST_SUB -o eth0 -j MASQUERADE
+}
 
 echo 'Blocking ICMP for external clients'
-iptables -A FORWARD -p icmp -j DROP --icmp-type echo-request -s $GUEST_SUB 
-iptables -A FORWARD -p icmp -j DROP --icmp-type echo-reply -s $GUEST_SUB 
+echo "iptables -A FORWARD -p icmp -j DROP --icmp-type echo-request -s $GUEST_SUB"
+iptables -C FORWARD -p icmp -j DROP --icmp-type echo-request -s $GUEST_SUB 2>/dev/null|| {
+    iptables -A FORWARD -p icmp -j DROP --icmp-type echo-request -s $GUEST_SUB
+}
+echo "iptables -A FORWARD -p icmp -j DROP --icmp-type echo-reply -s $GUEST_SUB"
+iptables -C FORWARD -p icmp -j DROP --icmp-type echo-reply -s $GUEST_SUB 2>/dev/null|| {
+    iptables -A FORWARD -p icmp -j DROP --icmp-type echo-reply -s $GUEST_SUB 
+}
 
 echo 'Blocking internal home subnet to access from external openvpn clients (Internet still available)'
-iptables -A FORWARD -s $GUEST_SUB -d $HOME_SUB -j DROP
+echo "iptables -A FORWARD -s $GUEST_SUB -d $HOME_SUB -j DROP"
+iptables -C FORWARD -s $GUEST_SUB -d $HOME_SUB -j DROP 2>/dev/null|| {
+    iptables -A FORWARD -s $GUEST_SUB -d $HOME_SUB -j DROP
+}
+
 
 if [[ ! -s fw-rules.sh ]]; then
     echo "No additional firewall rules to apply."
